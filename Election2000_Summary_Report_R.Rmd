@@ -1,0 +1,185 @@
+---
+title: "2000_Election"
+author: "Santonastaso"
+date: "2022-07-31"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Who Won the 2000 Presidential Election?
+
+The 2000 presidential election was decided on a few hundred votes. Ambiguous votes were recounted. Specifically undercounts (where the ballot was ambiguous and seemed no presidential vote was cast) and overcounts (where the ballot was ambiguous and seemed that more than one presidential vote was cast). There is an argument that Buchanan received more votes than expected in Palm Beach County (indeed, it's an outlier) due to graphic designe layout of the printed ballot.
+
+This uses regression analysis to predict whether this is true.
+
+The data and story for them comes from :
+Winston, Wayne. *Danalytics Stories: Using Data to make Good Things Happen. * Indianapolis, John Wiley & Sons, Inc., 2021.
+
+```{r}
+#Set up our libraries
+library(readxl)
+library(dplyr)
+library(tidyverse)
+```
+
+```{r}
+#Establish path and import the spreadsheet
+setwd('C:/Users/tsant/Documents/Data Science/Data_Stories/Chapter 03')
+#I wrap it in 'as.data.frame' otherwise it comes out as a tibble which isn't very friendly to manipulation
+df <- as.data.frame(read_excel("PalmBeachRegression.xlsx", sheet = "All Counties"))
+```
+```{r}
+#Explore the data set. Make sure I got what I think I got:
+head(df)
+dim(df) #it looks like we have to clean the data up. There are notes in the Excel sheet past column 3
+str(df)
+```
+```{r}
+#This is a dplyr command
+df1 <- select(df, county, Perot96, Buchanan00)
+```
+```{r}
+#again, is this what I think it is?
+dim(df1)
+str(df1)
+
+```
+
+We're going to do a regression analysis which uses x as a predictor of y. X is the independent variable and y is the dependent variabled. In this case, we'll make a scatter plot of Buchanon on the y axis and Perot on the x axis. This suggests that the amount of votes Perot received in 1996 is predicting the amount of votes Buchanon received in 2000. *This relationship assumes that voters who voted for the third party candidate in 1996 will have proportionally voted for the third party candidate in 2000.*
+
+
+```{r}
+#Let's look for outliers.
+#Constructing a figure of: Histogram, Boxplot and Q-Q plot
+par(mfrow = c(1, 3)) #we're telling R that we'll have 3 figures in a single row
+hist(df1$Buchanan00, main = "Histogram")
+boxplot(df1$Buchanan00, main = "Boxplot")
+qqnorm(df1$Buchanan00, main = "Normal Q-Q Plot")
+```
+Now to calculate the Z-scores. How far does each point lie from the mean?
+
+```{r}
+meanB <- mean(df1$Buchanan00)
+meanP <- mean(df1$Perot96)
+sdB <- sd(df1$Buchanan00)
+sdP <- sd(df1$Perot96)
+df1 <- df1 %>% mutate(Buchanan_zscore = (df1$Buchanan00 - meanB)/sdB)
+df1 <- df1 %>% mutate(Perot_zscore = (df1$Perot96 - meanP)/sdP)
+```
+```{r}
+df1
+```
+```{r}
+par(mfrow = c(1, 3)) #we're telling R that we'll have 3 figures in a single row
+hist(df1$Buchanan_zscore, main = "Histogram")
+boxplot(df1$Buchanan_zscore, main = "Boxplot")
+qqnorm(df1$Buchanan_zscore, main = "Normal Q-Q Plot")
+```
+
+
+Ok, so the outlier is clear in all three figures.
+
+Let's now calculate the mean and standard deviation
+```{r}
+mean = mean(df1$Buchanan00)
+std = sd(df1$Buchanan00)
+
+#find threshold values for outliers
+tmin = mean-(3*std)
+tmax = mean+(3*std)
+
+#find outlier
+df1$Buchanan00[which(df1$Buchanan00 < tmin | df1$Buchanan00 > tmax)]
+```
+
+```{r}
+#remove outlier
+Buchanan_sans<-df1$Buchanan00[which(df1$Buchanan00 > tmin & df1$Buchanan00 < tmax)]
+
+par(mfrow = c(1, 3)) #we're telling R that we'll have 3 figures in a single row
+hist(Buchanan_sans, main = "Histogram")
+boxplot(Buchanan_sans, main = "Boxplot")
+qqnorm(Buchanan_sans, main = "Normal Q-Q Plot")
+
+```
+
+```{r}
+#hmm...looks like we might still have outliers. Do we?
+Buchanan_sans[which(Buchanan_sans < tmin | Buchanan_sans > tmax)]
+```
+We don't! great.
+How about Perot?
+par(mfrow = c(1, 3)) #we're telling R that we'll have 3 figures in a single row
+hist(Buchanan_sans, main = "Histogram")
+boxplot(Buchanan_sans, main = "Boxplot")
+qqnorm(Buchanan_sans, main = "Normal Q-Q Plot")
+```{r}
+par(mfrow = c(1, 3))
+
+hist(df1$Perot96, main = "Histogram")
+boxplot(df1$Perot96, main = "Boxplot")
+qqnorm(df1$Perot96, main = "Normal Q-Q Plot")
+```
+This looks like the 2nd Buchanan plots. But let's just check:
+
+```{r}
+mean = mean(df1$Perot96)
+std = sd(df1$Perot96)
+
+#find threshold values for outliers
+tmin = mean-(3*std)
+tmax = mean+(3*std)
+df1$Perot96[which(df1$Perot96 < tmin | df1$Perot96 > tmax)]
+```
+I'm not going to touch these since we're interested in the 2000 election, and we're using the 1996 data as our baseline.
+
+Great. On to Regression.
+
+### Linear Regression with Palm Beach County *Included*
+
+```{r}
+relation <- lm(df1$Buchanan00 ~ df1$Perot96)
+print(relation)
+print(summary(relation))
+```
+The regression line (R^2) suggests that about 51% of the variation in Buchanan00 can be explained by the Perot vote in '96.
+
+Let's graph it:
+
+```{r}
+plot(df1$Buchanan00, df1$Perot96, main = "Buchanan00 and Perot96 Regression",
+abline(lm(df1$Perot96~df1$Buchanan00)), xlab = "Perot '96 Votes", ylab = "Buchanan '00 Votes")
+```
+
+### Linear Regression with Palm County *Omitted*
+
+```{r}
+#remove the outlying row:
+#identify the index of the outlier
+i <- which(df1$Buchanan00 == 3407)
+df2 <- df1[-c(i), ]
+```
+
+```{r}
+dim(df2)
+str(df2)
+#check if PalmBeach is in there specifically
+"PalmBeach" %in% df2$county
+```
+
+```{r}
+relation <- lm(df2$Buchanan00 ~ df2$Perot96)
+print(relation)
+print(summary(relation))
+```
+The regression line fits much better (85%).
+```{r}
+plot(df2$Buchanan00, df2$Perot96, main = "Buchanan00 and Perot96 Regression",
+abline(lm(df2$Perot96~df2$Buchanan00)), xlab = "Perot '96 Votes", ylab = "Buchanan '00 Votes")
+```
+It seems there is a compelling argument to be made that the votes in Palm Beach County have been overestimated for Buchanan in 2000. And given the ambiguity of the Butterfly Ballot, it seems that many of the votes Buchanan received were intended for Gore. By 'many', we're talking thousands...so not *that* many. But it's an order of magnitude more than was required to push the hundreds that Bush won by over to Gore.
